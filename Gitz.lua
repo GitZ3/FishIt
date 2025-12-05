@@ -1,202 +1,65 @@
--- Fish It Advanced Auto Fishing + Auto Perfection
--- By: GitZ (Customized for You)
--- Last Updated: December 2025
+-- Fish It Auto Fishing - Delta Executor (Android) Safe
+-- Tidak pakai CoreGui, writefile, atau fitur PC-only
 
--- 🛠️ CONFIGURASI
-local CONFIG = {
-    AutoSell = true,          -- Jual ikan otomatis tiap 30 detik
-    AntiIdle = true,          -- Gerak otomatis agar tidak idle
-    EnableGUI = true,         -- Tampilkan GUI toggle
-    MinPerfectThreshold = 0.95 -- Minimal 95% untuk dianggap "Perfect"
-}
-
--- ────────────────────────
--- 🔧 LIBRARY & INISIALISASI
--- ────────────────────────
-
-local Players = game:GetService("Players")
-local Player = Players.LocalPlayer
-local Character = Player.Character or Player.CharacterAdded:Wait()
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VirtualUser = game:GetService("VirtualUser")
+local Player = game.Players.LocalPlayer
 local UIS = game:GetService("UserInputService")
-local TS = game:GetService("TweenService")
+local VIM = game:GetService("VirtualInputManager")
 
-local FishingRod = nil
-local Enabled = true
-local GUI = nil
+-- Tunggu karakter
+repeat wait() until Player.Character
+local Character = Player.Character
 
--- Tunggu Rod
-repeat
-    FishingRod = Character:FindFirstChild("Fishing Rod") or Player.Backpack:FindFirstChild("Fishing Rod")
-    task.wait(0.5)
-until FishingRod
-
-Player.Character.Humanoid:EquipTool(FishingRod)
-
--- ────────────────────────
--- 🎯 AUTO PERFECTION CORE
--- ────────────────────────
-
-local function GetMeterProgress()
-    local gui = Player:FindFirstChild("PlayerGui")
-    if not gui then return 0 end
-
-    local screen = gui:FindFirstChild("FishingScreen")
-    if not screen then return 0 end
-
-    local meter = screen:FindFirstChild("Meter")
-    if not meter or not meter:FindFirstChild("Bar") then return 0 end
-
-    local bar = meter.Bar
-    if bar:IsA("Frame") and bar.Size.X.Scale > 0 then
-        return bar.Size.X.Scale
-    end
-    return 0
+-- Cari fishing rod
+local function GetRod()
+    return Character:FindFirstChild("Fishing Rod") or Player.Backpack:FindFirstChild("Fishing Rod")
 end
 
--- ────────────────────────
--- 🎣 AUTO FISHING LOOP
--- ────────────────────────
-
+-- Auto fishing loop
 spawn(function()
-    while true do
-        if not Enabled then
-            task.wait(1)
-            continue
-        end
+    while wait(2) do
+        local rod = GetRod()
+        if not rod then continue end
 
-        if not FishingRod or not FishingRod.Parent then
-            warn("Fishing Rod hilang!")
-            break
+        -- Equip rod
+        if rod.Parent == Player.Backpack then
+            Player.Character.Humanoid:EquipTool(rod)
         end
 
         -- Cek apakah sedang tidak fishing
-        local bobber = FishingRod:FindFirstChild("Line") and FishingRod.Line:FindFirstChild("Bobber")
+        local bobber = rod:FindFirstChild("Line") and rod.Line:FindFirstChild("Bobber")
         if not bobber then
-            -- LEMPAR PANCING
-            game:GetService("VirtualInputManager"):SendKeyEvent(true, "E", false, game)
-            task.wait(0.05)
-            game:GetService("VirtualInputManager"):SendKeyEvent(false, "E", false, game)
-            task.wait(1)
+            -- Cast
+            VIM:SendKeyEvent(true, "E", false, game)
+            wait(0.1)
+            VIM:SendKeyEvent(false, "E", false, game)
         else
-            -- DETEKSI BITE & AUTO REEL + PERFECTION
+            -- Auto reel saat bite
             local startY = bobber.Position.Y
-            local biteDetected = false
-            local timeout = 0
+            repeat wait(0.1) until bobber.Position.Y < startY - 2 or not bobber
 
-            repeat
-                task.wait(0.05)
-                timeout += 0.05
-                if bobber and bobber.Position.Y < startY - 2 then
-                    biteDetected = true
-                    break
-                end
-            until timeout > 15
-
-            if biteDetected then
-                -- Tekan E untuk mulai reel
-                game:GetService("VirtualInputManager"):SendKeyEvent(true, "E", false, game)
-                task.wait(0.05)
-                game:GetService("VirtualInputManager"):SendKeyEvent(false, "E", false, game)
-
-                -- AUTO PERFECT
-                repeat
-                    task.wait(0.01)
-                    local progress = GetMeterProgress()
-                    if progress >= CONFIG.MinPerfectThreshold then
-                        game:GetService("VirtualInputManager"):SendKeyEvent(true, "E", false, game)
-                        task.wait(0.01)
-                        game:GetService("VirtualInputManager"):SendKeyEvent(false, "E", false, game)
-                        break
-                    end
-                until progress >= 1 or not FishingRod:FindFirstChild("Line")
-
-                task.wait(2) -- Jeda setelah dapat ikan
+            if bobber then
+                -- Reel in
+                VIM:SendKeyEvent(true, "E", false, game)
+                wait(0.1)
+                VIM:SendKeyEvent(false, "E", false, game)
+                wait(2)
             end
         end
-
-        task.wait(0.1)
     end
 end)
 
--- ────────────────────────
--- 💰 AUTO SELL
--- ────────────────────────
+-- Auto sell ikan tiap 30 detik (opsional)
+spawn(function()
+    local Events = game.ReplicatedStorage:FindFirstChild("Events")
+    if not Events then return end
+    local SellAll = Events:FindFirstChild("SellAll")
+    if not SellAll then return end
 
-if CONFIG.AutoSell then
-    spawn(function()
-        while true do
-            task.wait(30)
-            if Enabled and ReplicatedStorage:FindFirstChild("Events") then
-                local sellEvent = ReplicatedStorage.Events:FindFirstChild("SellAll")
-                if sellEvent then
-                    pcall(function()
-                        sellEvent:FireServer()
-                    end)
-                end
-            end
-        end
-    end)
-end
+    while wait(30) do
+        pcall(function()
+            SellAll:FireServer()
+        end)
+    end
+end)
 
--- ────────────────────────
--- 🚶 ANTI-IDLE
--- ────────────────────────
-
-if CONFIG.AntiIdle then
-    spawn(function()
-        while true do
-            task.wait(60)
-            if Enabled and Character and Character.HumanoidRootPart then
-                -- Gerak kecil
-                local pos = HumanoidRootPart.CFrame
-                HumanoidRootPart.CFrame = pos * CFrame.new(math.random(-2, 2), 0, math.random(-2, 2))
-                task.wait(0.5)
-                HumanoidRootPart.CFrame = pos
-            end
-        end
-    end)
-end
-
--- ────────────────────────
--- 🖥️ GUI TOGGLE (OPTIONAL)
--- ────────────────────────
-
-if CONFIG.EnableGUI then
-    GUI = Instance.new("ScreenGui")
-    GUI.Name = "FishItAutoGUI"
-    GUI.Parent = game:GetService("CoreGui")
-    GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(0, 120, 0, 40)
-    Frame.Position = UDim2.new(1, -130, 0, 20)
-    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    Frame.BackgroundTransparency = 0.3
-    Frame.BorderSizePixel = 0
-    Frame.Parent = GUI
-
-    local Text = Instance.new("TextLabel")
-    Text.Size = UDim2.new(1, 0, 1, 0)
-    Text.BackgroundTransparency = 1
-    Text.Text = "🐟 AUTO ON"
-    Text.Font = Enum.Font.GothamBold
-    Text.TextColor3 = Color3.fromRGB(0, 255, 100)
-    Text.TextSize = 14
-    Text.Parent = Frame
-
-    Frame.MouseButton1Click:Connect(function()
-        Enabled = not Enabled
-        Text.Text = Enabled and "🐟 AUTO ON" or "⏹ AUTO OFF"
-        Text.TextColor3 = Enabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
-    end)
-end
-
--- ────────────────────────
--- ✅ SELESAI
--- ────────────────────────
-
-print("✅ Fish It Auto Fishing + Auto Perfection aktif!")
-print("ℹ️  Klik GUI di pojok kanan atas untuk matikan.")
+print("✅ Fish It Auto Fishing (Mobile Safe) aktif!")
